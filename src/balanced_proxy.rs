@@ -109,6 +109,7 @@ where
                     path.clone(),
                     t.into(),
                     preserve_host_header,
+                    false,
                     client.clone(),
                 )
             })
@@ -315,6 +316,7 @@ where
                                 path.clone(),
                                 target,
                                 preserve_host_header,
+                                false,
                                 client.clone(),
                             );
 

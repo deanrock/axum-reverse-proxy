@@ -24,6 +24,7 @@ pub struct ReverseProxy<C: Connect + Clone + Send + Sync + 'static> {
     path: String,
     target: String,
     preserve_host_header: bool,
+    is_secure: bool,
     client: Client<C, Body>,
 }
 
@@ -49,7 +50,7 @@ impl StandardReverseProxy {
     ///
     /// let proxy = ReverseProxy::new("/api", "https://api.example.com");
     /// ```
-    pub fn new<S>(path: S, target: S, preserve_host_header: bool) -> Self
+    pub fn new<S>(path: S, target: S, preserve_host_header: bool, is_secure: bool) -> Self
     where
         S: Into<String>,
     {
@@ -80,7 +81,7 @@ impl StandardReverseProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, target, preserve_host_header, client)
+        Self::new_with_client(path, target, preserve_host_header, is_secure, client)
     }
 }
 
@@ -118,6 +119,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         path: S,
         target: S,
         preserve_host_header: bool,
+        is_secure: bool,
         client: Client<C, Body>,
     ) -> Self
     where
@@ -127,6 +129,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
             path: path.into(),
             target: target.into(),
             preserve_host_header,
+            is_secure,
             client,
         }
     }
@@ -205,6 +208,12 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
             {
                 builder = builder.header("x-forwarded-for", ip.to_string());
             }
+
+            let secure = match self.is_secure {
+                true => "https",
+                 false => "http",
+            };
+            builder = builder.header("x-forwarded-proto", secure);
 
             // Forward headers
             for (key, value) in req.headers() {
