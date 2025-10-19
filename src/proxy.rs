@@ -182,6 +182,12 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
                 }
             }
 
+            if self.preserve_host_header && req.headers().get("host").is_none() {
+                if let Some(host) = req.uri().host() {
+                    builder = builder.header("host", host);
+                }
+            }
+
             // Take the request body
             let (parts, body) = req.into_parts();
             drop(parts);
