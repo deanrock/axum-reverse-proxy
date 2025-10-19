@@ -68,8 +68,7 @@ impl StandardBalancedProxy {
         let connector = {
             use hyper_rustls::HttpsConnectorBuilder;
             HttpsConnectorBuilder::new()
-                .with_native_roots()
-                .unwrap()
+                .with_webpki_roots()
                 .https_or_http()
                 .enable_http1()
                 .wrap_connector(connector)
