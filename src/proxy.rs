@@ -163,7 +163,14 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         // Check if this is a WebSocket upgrade request
         if websocket::is_websocket_upgrade(req.headers()) {
             trace!("Detected WebSocket upgrade request");
-            match websocket::handle_websocket(req, self.preserve_host_header, &self.target).await {
+            match websocket::handle_websocket(
+                req,
+                self.preserve_host_header,
+                self.is_secure,
+                &self.target,
+            )
+            .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     error!("Failed to handle WebSocket upgrade: {}", e);
@@ -211,7 +218,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
 
             let secure = match self.is_secure {
                 true => "https",
-                 false => "http",
+                false => "http",
             };
             builder = builder.header("x-forwarded-proto", secure);
 
