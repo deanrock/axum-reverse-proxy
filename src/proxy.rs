@@ -175,16 +175,28 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
                         req.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""),
                     ));
 
-            // Forward headers
-            for (key, value) in req.headers() {
-                if key != "host" || self.preserve_host_header {
-                    builder = builder.header(key, value);
+            let host = {
+                if let Some(host) = req.headers().get("host") {
+                    Some(host.to_str().unwrap())
+                } else if let Some(host) = req.uri().host() {
+                    Some(host)
+                } else {
+                    None
                 }
+            };
+
+            if let Some(host) = host {
+                if self.preserve_host_header {
+                        builder = builder.header("host", host);
+                }
+
+                builder = builder.header("x-forwarded-host", host);
             }
 
-            if self.preserve_host_header && req.headers().get("host").is_none() {
-                if let Some(host) = req.uri().host() {
-                    builder = builder.header("host", host);
+            // Forward headers
+            for (key, value) in req.headers() {
+                if key != "host" {
+                    builder = builder.header(key, value);
                 }
             }
 
