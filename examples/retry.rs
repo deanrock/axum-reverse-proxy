@@ -8,7 +8,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Forward all requests under /api to httpbin
-    let proxy = ReverseProxy::new("/api", "https://httpbin.org");
+    let proxy = ReverseProxy::new("/api", "https://httpbin.org", false);
 
     // Enable retries
     let app: Router = proxy.into();

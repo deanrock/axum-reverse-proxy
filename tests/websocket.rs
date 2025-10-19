@@ -62,7 +62,7 @@ async fn setup_test_server(target_prefix: &str) -> (SocketAddr, SocketAddr) {
     });
 
     // Create the proxy server
-    let proxy = ReverseProxy::new("/", &format!("{target_prefix}{upstream_addr}"));
+    let proxy = ReverseProxy::new("/", &format!("{target_prefix}{upstream_addr}"), false);
     let proxy_app: Router = proxy.into();
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_addr = proxy_listener.local_addr().unwrap();

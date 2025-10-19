@@ -123,7 +123,7 @@ async fn test_discoverable_proxy_creation() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Test that the proxy can be created
     assert_eq!(proxy.path(), "/api");
@@ -150,7 +150,7 @@ async fn test_discoverable_proxy_service_count() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/test", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/test", client, false, discovery_stream);
 
     // Initially no services
     assert_eq!(proxy.service_count().await, 0);
@@ -181,7 +181,7 @@ async fn test_discoverable_proxy_service_addition_and_removal() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -200,7 +200,7 @@ async fn test_discoverable_proxy_error_handling() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -222,7 +222,7 @@ async fn test_discoverable_proxy_no_services_response() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -255,7 +255,7 @@ async fn test_discoverable_proxy_path_handling() {
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
     let proxy =
-        DiscoverableBalancedProxy::new_with_client("/custom/path", client, discovery_stream);
+        DiscoverableBalancedProxy::new_with_client("/custom/path", client, false, discovery_stream);
 
     // Test path getter
     assert_eq!(proxy.path(), "/custom/path");
@@ -272,7 +272,7 @@ async fn test_discoverable_proxy_concurrent_access() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -308,7 +308,7 @@ async fn test_discoverable_proxy_service_replacement() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -334,6 +334,7 @@ async fn test_discoverable_proxy_load_balancing_strategies() {
     let proxy_rr = DiscoverableBalancedProxy::new_with_client(
         "/api",
         client.clone(),
+        false,
         discovery_stream.clone(),
     );
     assert_eq!(proxy_rr.strategy(), LoadBalancingStrategy::RoundRobin);
@@ -342,6 +343,7 @@ async fn test_discoverable_proxy_load_balancing_strategies() {
     let proxy_rr_explicit = DiscoverableBalancedProxy::new_with_client_and_strategy(
         "/api",
         client.clone(),
+        false,
         discovery_stream.clone(),
         LoadBalancingStrategy::RoundRobin,
     );
@@ -354,6 +356,7 @@ async fn test_discoverable_proxy_load_balancing_strategies() {
     let proxy_p2c_pending = DiscoverableBalancedProxy::new_with_client_and_strategy(
         "/api",
         client.clone(),
+        false,
         discovery_stream.clone(),
         LoadBalancingStrategy::P2cPendingRequests,
     );
@@ -366,6 +369,7 @@ async fn test_discoverable_proxy_load_balancing_strategies() {
     let proxy_p2c_ewma = DiscoverableBalancedProxy::new_with_client_and_strategy(
         "/api",
         client,
+        false,
         discovery_stream,
         LoadBalancingStrategy::P2cPeakEwma,
     );
@@ -447,6 +451,7 @@ async fn test_p2c_pending_requests_prefers_fast_service() {
     let mut proxy = DiscoverableBalancedProxy::new_with_client_and_strategy(
         "/",
         client,
+        false,
         discovery,
         LoadBalancingStrategy::P2cPendingRequests,
     );
@@ -540,6 +545,7 @@ async fn test_p2c_peak_ewma_prefers_fast_service() {
     let mut proxy = DiscoverableBalancedProxy::new_with_client_and_strategy(
         "/",
         client,
+        false,
         discovery,
         LoadBalancingStrategy::P2cPeakEwma,
     );

@@ -23,6 +23,7 @@ use crate::websocket;
 pub struct ReverseProxy<C: Connect + Clone + Send + Sync + 'static> {
     path: String,
     target: String,
+    preserve_host_header: bool,
     client: Client<C, Body>,
 }
 
@@ -48,7 +49,7 @@ impl StandardReverseProxy {
     ///
     /// let proxy = ReverseProxy::new("/api", "https://api.example.com");
     /// ```
-    pub fn new<S>(path: S, target: S) -> Self
+    pub fn new<S>(path: S, target: S, preserve_host_header: bool) -> Self
     where
         S: Into<String>,
     {
@@ -79,7 +80,7 @@ impl StandardReverseProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, target, client)
+        Self::new_with_client(path, target, preserve_host_header, client)
     }
 }
 
@@ -113,13 +114,14 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
     ///     client,
     /// );
     /// ```
-    pub fn new_with_client<S>(path: S, target: S, client: Client<C, Body>) -> Self
+    pub fn new_with_client<S>(path: S, target: S, preserve_host_header: bool, client: Client<C, Body>) -> Self
     where
         S: Into<String>,
     {
         Self {
             path: path.into(),
             target: target.into(),
+            preserve_host_header,
             client,
         }
     }
@@ -153,7 +155,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         // Check if this is a WebSocket upgrade request
         if websocket::is_websocket_upgrade(req.headers()) {
             trace!("Detected WebSocket upgrade request");
-            match websocket::handle_websocket(req, &self.target).await {
+            match websocket::handle_websocket(req, self.preserve_host_header, &self.target).await {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     error!("Failed to handle WebSocket upgrade: {}", e);
@@ -175,7 +177,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
 
             // Forward headers
             for (key, value) in req.headers() {
-                if key != "host" {
+                if key != "host" || self.preserve_host_header {
                     builder = builder.header(key, value);
                 }
             }
@@ -273,10 +275,10 @@ mod tests {
 
     #[test]
     fn transform_uri_with_and_without_trailing_slash() {
-        let proxy = ReverseProxy::new("/api/", "http://target");
+        let proxy = ReverseProxy::new("/api/", "http://target", false);
         assert_eq!(proxy.transform_uri("/api/test"), "http://target/test");
 
-        let proxy_no_slash = ReverseProxy::new("/api", "http://target");
+        let proxy_no_slash = ReverseProxy::new("/api", "http://target", false);
         assert_eq!(
             proxy_no_slash.transform_uri("/api/test"),
             "http://target/test"
@@ -285,7 +287,7 @@ mod tests {
 
     #[test]
     fn transform_uri_root() {
-        let proxy = ReverseProxy::new("/", "http://target");
+        let proxy = ReverseProxy::new("/", "http://target", false);
         assert_eq!(proxy.transform_uri("/test"), "http://target/test");
     }
 }

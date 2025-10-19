@@ -5,7 +5,7 @@ use tokio::net::TcpListener;
 #[tokio::main]
 async fn main() {
     // Create a reverse proxy that forwards requests to httpbin.org
-    let proxy = ReverseProxy::new("/", "https://httpbin.org");
+    let proxy = ReverseProxy::new("/", "https://httpbin.org", false);
     let app: Router = proxy.into();
 
     // Create a TCP listener

@@ -55,8 +55,7 @@ async fn main() {
     let connector = {
         use hyper_rustls::HttpsConnectorBuilder;
         HttpsConnectorBuilder::new()
-            .with_native_roots()
-            .unwrap()
+            .with_webpki_roots()
             .https_or_http()
             .enable_http1()
             .wrap_connector(connector)
@@ -76,7 +75,7 @@ async fn main() {
         .build(connector);
 
     // Create the discoverable balanced proxy
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start the discovery process
     proxy.start_discovery().await;

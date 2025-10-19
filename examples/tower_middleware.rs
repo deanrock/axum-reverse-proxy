@@ -33,7 +33,7 @@ async fn main() {
     };
 
     // Create a reverse proxy that forwards requests to httpbin.org
-    let proxy = ReverseProxy::new("/api", "https://httpbin.org");
+    let proxy = ReverseProxy::new("/api", "https://httpbin.org", false);
 
     // Create our main router with app state
     let app = Router::new()

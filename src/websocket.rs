@@ -84,6 +84,7 @@ pub(crate) fn compute_host_header(url: &str) -> (String, u16) {
 /// It ensures that all required headers are properly handled and forwarded to the upstream server.
 pub(crate) async fn handle_websocket(
     req: Request<Body>,
+    preserve_host_header: bool,
     target: &str,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     trace!("Handling WebSocket upgrade request");
@@ -150,7 +151,7 @@ pub(crate) async fn handle_websocket(
         .header("host", host_header);
 
     for (key, value) in req.headers() {
-        if key != "host" {
+        if key != "host" || preserve_host_header {
             request = request.header(key.as_str(), value);
         }
     }

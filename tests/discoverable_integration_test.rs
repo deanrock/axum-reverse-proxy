@@ -88,7 +88,7 @@ async fn test_discoverable_proxy_http_requests() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -140,7 +140,7 @@ async fn test_discoverable_proxy_load_balancing() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
@@ -190,7 +190,7 @@ async fn test_discoverable_proxy_service_unavailable() {
     let connector = HttpConnector::new();
     let client = Client::builder(hyper_util::rt::TokioExecutor::new()).build(connector);
 
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, discovery_stream);
+    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start discovery
     proxy.start_discovery().await;
