@@ -92,14 +92,26 @@ impl<C> BalancedProxy<C>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
-    pub fn new_with_client<S>(path: S, targets: Vec<S>, preserve_host_header: bool, client: Client<C, Body>) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        targets: Vec<S>,
+        preserve_host_header: bool,
+        client: Client<C, Body>,
+    ) -> Self
     where
         S: Into<String> + Clone,
     {
         let path = path.into();
         let proxies = targets
             .into_iter()
-            .map(|t| ReverseProxy::new_with_client(path.clone(), t.into(), preserve_host_header, client.clone()))
+            .map(|t| {
+                ReverseProxy::new_with_client(
+                    path.clone(),
+                    t.into(),
+                    preserve_host_header,
+                    client.clone(),
+                )
+            })
             .collect();
 
         Self {
@@ -208,11 +220,22 @@ where
 {
     /// Creates a new discoverable balanced proxy with a custom client and discover implementation.
     /// Uses round-robin load balancing by default.
-    pub fn new_with_client<S>(path: S, client: Client<C, Body>, preserve_host_header: bool, discover: D) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        client: Client<C, Body>,
+        preserve_host_header: bool,
+        discover: D,
+    ) -> Self
     where
         S: Into<String>,
     {
-        Self::new_with_client_and_strategy(path, client, preserve_host_header, discover, LoadBalancingStrategy::default())
+        Self::new_with_client_and_strategy(
+            path,
+            client,
+            preserve_host_header,
+            discover,
+            LoadBalancingStrategy::default(),
+        )
     }
 
     /// Creates a new discoverable balanced proxy with a custom client, discover implementation, and load balancing strategy.
@@ -288,8 +311,12 @@ where
                             let target: String = service.into();
                             debug!("Discovered new service: {:?} -> {}", key, target);
 
-                            let proxy =
-                                ReverseProxy::new_with_client(path.clone(), target, preserve_host_header, client.clone());
+                            let proxy = ReverseProxy::new_with_client(
+                                path.clone(),
+                                target,
+                                preserve_host_header,
+                                client.clone(),
+                            );
 
                             {
                                 let mut keys_guard = proxy_keys.write().await;

@@ -262,7 +262,11 @@ async fn test_proxy_exact_path_handling() {
 
     // Create a reverse proxy that maps /api to the test server
     let app: Router = Router::new()
-        .merge(ReverseProxy::new("/api", &format!("http://{test_addr}"), false))
+        .merge(ReverseProxy::new(
+            "/api",
+            &format!("http://{test_addr}"),
+            false,
+        ))
         .merge(ReverseProxy::new(
             "/_test",
             &format!("http://{test_addr}/_test"),

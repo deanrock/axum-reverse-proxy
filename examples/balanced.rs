@@ -8,7 +8,7 @@ async fn main() {
     let proxy = BalancedProxy::new(
         "/api",
         vec!["https://api1.example.com", "https://api2.example.com"],
-    false,
+        false,
     );
     let app: Router = proxy.into();
 

@@ -75,7 +75,8 @@ async fn main() {
         .build(connector);
 
     // Create the discoverable balanced proxy
-    let mut proxy = DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
+    let mut proxy =
+        DiscoverableBalancedProxy::new_with_client("/api", client, false, discovery_stream);
 
     // Start the discovery process
     proxy.start_discovery().await;

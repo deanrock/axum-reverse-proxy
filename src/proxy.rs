@@ -9,7 +9,7 @@ use hyper_util::client::legacy::{
     Client,
     connect::{Connect, HttpConnector},
 };
-use std::convert::Infallible;
+use std::{convert::Infallible, net::SocketAddr};
 use tracing::{error, trace};
 
 use crate::websocket;
@@ -114,7 +114,12 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
     ///     client,
     /// );
     /// ```
-    pub fn new_with_client<S>(path: S, target: S, preserve_host_header: bool, client: Client<C, Body>) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        target: S,
+        preserve_host_header: bool,
+        client: Client<C, Body>,
+    ) -> Self
     where
         S: Into<String>,
     {
@@ -187,10 +192,18 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
 
             if let Some(host) = host {
                 if self.preserve_host_header {
-                        builder = builder.header("host", host);
+                    builder = builder.header("host", host);
                 }
 
                 builder = builder.header("x-forwarded-host", host);
+            }
+
+            if let Some(ip) = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                .map(|addr| addr.ip())
+            {
+                builder = builder.header("x-forwarded-for", ip.to_string());
             }
 
             // Forward headers
