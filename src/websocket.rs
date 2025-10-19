@@ -160,7 +160,8 @@ pub(crate) async fn handle_websocket(
     request = request.header("x-forwarded-proto", secure);
 
     for (key, value) in req.headers() {
-        if key != "host" {
+        // sec-websocket-extensions: `sec-websocket-extensions` is causing issues with tungstenite for some upstreams.
+        if key != "host" && key != "sec-websocket-extensions" {
             request = request.header(key.as_str(), value);
         }
     }
