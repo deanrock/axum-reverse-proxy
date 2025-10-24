@@ -10,7 +10,7 @@ use tower::ServiceExt;
 
 /// Helper function to create a test app with RFC9110 middleware
 fn create_test_app(config: Option<Rfc9110Config>) -> Router {
-    let proxy = ReverseProxy::new("/", "http://example.com");
+    let proxy = ReverseProxy::new("/", "http://example.com", false);
     let proxy_router: Router = proxy.into();
     let app = Router::new().merge(proxy_router);
 

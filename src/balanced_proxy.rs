@@ -53,7 +53,7 @@ pub type StandardBalancedProxy = BalancedProxy<NativeTlsHttpsConnector<HttpConne
 pub type StandardBalancedProxy = BalancedProxy<HttpConnector>;
 
 impl StandardBalancedProxy {
-    pub fn new<S>(path: S, targets: Vec<S>) -> Self
+    pub fn new<S>(path: S, targets: Vec<S>, preserve_host_header: bool) -> Self
     where
         S: Into<String> + Clone,
     {
@@ -68,8 +68,7 @@ impl StandardBalancedProxy {
         let connector = {
             use hyper_rustls::HttpsConnectorBuilder;
             HttpsConnectorBuilder::new()
-                .with_native_roots()
-                .unwrap()
+                .with_webpki_roots()
                 .https_or_http()
                 .enable_http1()
                 .wrap_connector(connector)
@@ -85,7 +84,7 @@ impl StandardBalancedProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, targets, client)
+        Self::new_with_client(path, targets, preserve_host_header, client)
     }
 }
 
@@ -93,14 +92,27 @@ impl<C> BalancedProxy<C>
 where
     C: Connect + Clone + Send + Sync + 'static,
 {
-    pub fn new_with_client<S>(path: S, targets: Vec<S>, client: Client<C, Body>) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        targets: Vec<S>,
+        preserve_host_header: bool,
+        client: Client<C, Body>,
+    ) -> Self
     where
         S: Into<String> + Clone,
     {
         let path = path.into();
         let proxies = targets
             .into_iter()
-            .map(|t| ReverseProxy::new_with_client(path.clone(), t.into(), client.clone()))
+            .map(|t| {
+                ReverseProxy::new_with_client(
+                    path.clone(),
+                    t.into(),
+                    preserve_host_header,
+                    false,
+                    client.clone(),
+                )
+            })
             .collect();
 
         Self {
@@ -180,6 +192,7 @@ where
 {
     path: String,
     client: Client<C, Body>,
+    preserve_host_header: bool,
     proxies_snapshot: Arc<std::sync::RwLock<Arc<Vec<ReverseProxy<C>>>>>,
     proxy_keys: Arc<tokio::sync::RwLock<HashMap<D::Key, usize>>>, // key -> index mapping
     counter: Arc<AtomicUsize>,
@@ -208,17 +221,29 @@ where
 {
     /// Creates a new discoverable balanced proxy with a custom client and discover implementation.
     /// Uses round-robin load balancing by default.
-    pub fn new_with_client<S>(path: S, client: Client<C, Body>, discover: D) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        client: Client<C, Body>,
+        preserve_host_header: bool,
+        discover: D,
+    ) -> Self
     where
         S: Into<String>,
     {
-        Self::new_with_client_and_strategy(path, client, discover, LoadBalancingStrategy::default())
+        Self::new_with_client_and_strategy(
+            path,
+            client,
+            preserve_host_header,
+            discover,
+            LoadBalancingStrategy::default(),
+        )
     }
 
     /// Creates a new discoverable balanced proxy with a custom client, discover implementation, and load balancing strategy.
     pub fn new_with_client_and_strategy<S>(
         path: S,
         client: Client<C, Body>,
+        preserve_host_header: bool,
         discover: D,
         strategy: LoadBalancingStrategy,
     ) -> Self
@@ -242,6 +267,7 @@ where
         Self {
             path,
             client,
+            preserve_host_header,
             proxies_snapshot,
             proxy_keys: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             counter: Arc::new(AtomicUsize::new(0)),
@@ -269,6 +295,7 @@ where
         let proxy_keys = Arc::clone(&self.proxy_keys);
         let client = self.client.clone();
         let path = self.path.clone();
+        let preserve_host_header = self.preserve_host_header.clone();
 
         tokio::spawn(async move {
             use futures_util::future::poll_fn;
@@ -285,8 +312,13 @@ where
                             let target: String = service.into();
                             debug!("Discovered new service: {:?} -> {}", key, target);
 
-                            let proxy =
-                                ReverseProxy::new_with_client(path.clone(), target, client.clone());
+                            let proxy = ReverseProxy::new_with_client(
+                                path.clone(),
+                                target,
+                                preserve_host_header,
+                                false,
+                                client.clone(),
+                            );
 
                             {
                                 let mut keys_guard = proxy_keys.write().await;

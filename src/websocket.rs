@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use axum::{body::Body, http::Request, response::Response};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, stream::StreamExt};
@@ -11,7 +13,6 @@ use tokio_tungstenite::{
     tungstenite::{Error, Message},
 };
 use tracing::{error, trace};
-use url::{Host, Url};
 
 /// Check if a request is a WebSocket upgrade request by examining the headers.
 ///
@@ -84,6 +85,8 @@ pub(crate) fn compute_host_header(url: &str) -> (String, u16) {
 /// It ensures that all required headers are properly handled and forwarded to the upstream server.
 pub(crate) async fn handle_websocket(
     req: Request<Body>,
+    preserve_host_header: bool,
+    is_secure: bool,
     target: &str,
 ) -> Result<Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
     trace!("Handling WebSocket upgrade request");
@@ -120,37 +123,45 @@ pub(crate) async fn handle_websocket(
 
     trace!("Connecting to upstream WebSocket at {}", upstream_url);
 
-    // Parse the URL to get the host and scheme
-    let url = Url::parse(&upstream_url)?;
-    let scheme = url.scheme();
-    let host = match url.host().ok_or("Missing host in URL")? {
-        Host::Ipv6(addr) => format!("[{addr}]"),
-        Host::Ipv4(addr) => addr.to_string(),
-        Host::Domain(s) => s.to_string(),
-    };
-    let port = match url.port() {
-        Some(p) => p,
-        None => {
-            if scheme == "wss" {
-                443
-            } else {
-                80
-            }
+    // Forward all headers except host to upstream
+    let mut request =
+        tokio_tungstenite::tungstenite::handshake::client::Request::builder().uri(upstream_url);
+
+    let host = {
+        if let Some(host) = req.headers().get("host") {
+            Some(host.to_str().unwrap())
+        } else if let Some(host) = req.uri().host() {
+            Some(host)
+        } else {
+            None
         }
     };
-    let host_header = if (scheme == "wss" && port == 443) || (scheme == "ws" && port == 80) {
-        host.clone()
-    } else {
-        format!("{host}:{port}")
-    };
 
-    // Forward all headers except host to upstream
-    let mut request = tokio_tungstenite::tungstenite::handshake::client::Request::builder()
-        .uri(upstream_url)
-        .header("host", host_header);
+    if let Some(host) = host {
+        if preserve_host_header {
+            request = request.header("host", host);
+        }
+
+        request = request.header("x-forwarded-host", host);
+    }
+
+    if let Some(ip) = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+        .map(|addr| addr.ip())
+    {
+        request = request.header("x-forwarded-for", ip.to_string());
+    }
+
+    let secure = match is_secure {
+        true => "https",
+        false => "http",
+    };
+    request = request.header("x-forwarded-proto", secure);
 
     for (key, value) in req.headers() {
-        if key != "host" {
+        // sec-websocket-extensions: `sec-websocket-extensions` is causing issues with tungstenite for some upstreams.
+        if key != "host" && key != "sec-websocket-extensions" {
             request = request.header(key.as_str(), value);
         }
     }

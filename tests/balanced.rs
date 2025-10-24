@@ -24,6 +24,7 @@ async fn test_round_robin_distribution() {
     let proxy = BalancedProxy::new(
         String::from("/"),
         vec![format!("http://{}", addr1), format!("http://{}", addr2)],
+        false,
     );
     let app: Router = proxy.into();
 
@@ -53,7 +54,7 @@ async fn test_balanced_proxy_no_upstreams_returns_503() {
     use axum::body::Body;
     use tower::Service;
 
-    let mut proxy = BalancedProxy::new(String::from("/"), Vec::<String>::new());
+    let mut proxy = BalancedProxy::new(String::from("/"), Vec::<String>::new(), false);
 
     let req = axum::http::Request::builder()
         .method("GET")
@@ -99,6 +100,7 @@ async fn test_balanced_proxy_path_stripping() {
     let proxy = BalancedProxy::new(
         String::from("/api"),
         vec![format!("http://{}", addr1), format!("http://{}", addr2)],
+        false,
     );
     let app: Router = proxy.into();
 

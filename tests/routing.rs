@@ -19,7 +19,7 @@ async fn test_proxy_nested_routing() {
     });
 
     // Create a reverse proxy
-    let proxy = ReverseProxy::new("/proxy", &format!("http://{test_addr}"));
+    let proxy = ReverseProxy::new("/proxy", &format!("http://{test_addr}"), false);
 
     // Create an app state
     #[derive(Clone)]
@@ -94,7 +94,7 @@ async fn test_proxy_path_handling() {
     });
 
     // Create a reverse proxy with empty path
-    let proxy = ReverseProxy::new("", &format!("http://{test_addr}"));
+    let proxy = ReverseProxy::new("", &format!("http://{test_addr}"), false);
     let app: Router = proxy.into();
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -166,8 +166,8 @@ async fn test_proxy_multiple_states() {
     });
 
     // Create proxies with different paths
-    let proxy1 = ReverseProxy::new("/api1", &format!("http://{addr1}"));
-    let proxy2 = ReverseProxy::new("/api2", &format!("http://{addr2}"));
+    let proxy1 = ReverseProxy::new("/api1", &format!("http://{addr1}"), false);
+    let proxy2 = ReverseProxy::new("/api2", &format!("http://{addr2}"), false);
 
     // Create app state
     #[derive(Clone)]
@@ -262,14 +262,20 @@ async fn test_proxy_exact_path_handling() {
 
     // Create a reverse proxy that maps /api to the test server
     let app: Router = Router::new()
-        .merge(ReverseProxy::new("/api", &format!("http://{test_addr}")))
+        .merge(ReverseProxy::new(
+            "/api",
+            &format!("http://{test_addr}"),
+            false,
+        ))
         .merge(ReverseProxy::new(
             "/_test",
             &format!("http://{test_addr}/_test"),
+            false,
         ))
         .merge(ReverseProxy::new(
             "/foo",
             &format!("http://{test_addr}/bar"),
+            false,
         ));
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -348,7 +354,7 @@ async fn test_proxy_query_parameters() {
     });
 
     // Create a reverse proxy
-    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"));
+    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"), false);
     let app: Router = proxy.into();
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -60,6 +60,7 @@ async fn create_proxy_with_strategy(
     let mut proxy = DiscoverableBalancedProxy::new_with_client_and_strategy(
         path,
         client,
+        false,
         discovery_stream,
         strategy,
     );

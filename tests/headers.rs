@@ -31,7 +31,7 @@ async fn test_proxy_header_handling() {
     server_ready.notified().await;
 
     // Create a reverse proxy
-    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"));
+    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"), false);
     let app: Router = proxy.into();
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -143,7 +143,7 @@ async fn test_proxy_special_headers() {
     server_ready.notified().await;
 
     // Create a reverse proxy
-    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"));
+    let proxy = ReverseProxy::new("/", &format!("http://{test_addr}"), false);
     let app: Router = proxy.into();
 
     let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

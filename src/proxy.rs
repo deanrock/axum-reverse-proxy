@@ -9,7 +9,7 @@ use hyper_util::client::legacy::{
     Client,
     connect::{Connect, HttpConnector},
 };
-use std::convert::Infallible;
+use std::{convert::Infallible, net::SocketAddr};
 use tracing::{error, trace};
 
 use crate::websocket;
@@ -23,6 +23,8 @@ use crate::websocket;
 pub struct ReverseProxy<C: Connect + Clone + Send + Sync + 'static> {
     path: String,
     target: String,
+    preserve_host_header: bool,
+    is_secure: bool,
     client: Client<C, Body>,
 }
 
@@ -48,7 +50,7 @@ impl StandardReverseProxy {
     ///
     /// let proxy = ReverseProxy::new("/api", "https://api.example.com");
     /// ```
-    pub fn new<S>(path: S, target: S) -> Self
+    pub fn new<S>(path: S, target: S, preserve_host_header: bool, is_secure: bool) -> Self
     where
         S: Into<String>,
     {
@@ -63,8 +65,7 @@ impl StandardReverseProxy {
         let connector = {
             use hyper_rustls::HttpsConnectorBuilder;
             HttpsConnectorBuilder::new()
-                .with_native_roots()
-                .unwrap()
+                .with_webpki_roots()
                 .https_or_http()
                 .enable_http1()
                 .wrap_connector(connector)
@@ -80,7 +81,7 @@ impl StandardReverseProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, target, client)
+        Self::new_with_client(path, target, preserve_host_header, is_secure, client)
     }
 }
 
@@ -114,13 +115,21 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
     ///     client,
     /// );
     /// ```
-    pub fn new_with_client<S>(path: S, target: S, client: Client<C, Body>) -> Self
+    pub fn new_with_client<S>(
+        path: S,
+        target: S,
+        preserve_host_header: bool,
+        is_secure: bool,
+        client: Client<C, Body>,
+    ) -> Self
     where
         S: Into<String>,
     {
         Self {
             path: path.into(),
             target: target.into(),
+            preserve_host_header,
+            is_secure,
             client,
         }
     }
@@ -154,7 +163,14 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         // Check if this is a WebSocket upgrade request
         if websocket::is_websocket_upgrade(req.headers()) {
             trace!("Detected WebSocket upgrade request");
-            match websocket::handle_websocket(req, &self.target).await {
+            match websocket::handle_websocket(
+                req,
+                self.preserve_host_header,
+                self.is_secure,
+                &self.target,
+            )
+            .await
+            {
                 Ok(response) => return Ok(response),
                 Err(e) => {
                     error!("Failed to handle WebSocket upgrade: {}", e);
@@ -173,6 +189,38 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
                     .uri(self.transform_uri(
                         req.uri().path_and_query().map(|x| x.as_str()).unwrap_or(""),
                     ));
+
+            let host = {
+                if let Some(host) = req.headers().get("host") {
+                    Some(host.to_str().unwrap())
+                } else if let Some(host) = req.uri().host() {
+                    Some(host)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(host) = host {
+                if self.preserve_host_header {
+                    builder = builder.header("host", host);
+                }
+
+                builder = builder.header("x-forwarded-host", host);
+            }
+
+            if let Some(ip) = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                .map(|addr| addr.ip())
+            {
+                builder = builder.header("x-forwarded-for", ip.to_string());
+            }
+
+            let secure = match self.is_secure {
+                true => "https",
+                false => "http",
+            };
+            builder = builder.header("x-forwarded-proto", secure);
 
             // Forward headers
             for (key, value) in req.headers() {
@@ -274,10 +322,10 @@ mod tests {
 
     #[test]
     fn transform_uri_with_and_without_trailing_slash() {
-        let proxy = ReverseProxy::new("/api/", "http://target");
+        let proxy = ReverseProxy::new("/api/", "http://target", false);
         assert_eq!(proxy.transform_uri("/api/test"), "http://target/test");
 
-        let proxy_no_slash = ReverseProxy::new("/api", "http://target");
+        let proxy_no_slash = ReverseProxy::new("/api", "http://target", false);
         assert_eq!(
             proxy_no_slash.transform_uri("/api/test"),
             "http://target/test"
@@ -286,7 +334,7 @@ mod tests {
 
     #[test]
     fn transform_uri_root() {
-        let proxy = ReverseProxy::new("/", "http://target");
+        let proxy = ReverseProxy::new("/", "http://target", false);
         assert_eq!(proxy.transform_uri("/test"), "http://target/test");
     }
 }

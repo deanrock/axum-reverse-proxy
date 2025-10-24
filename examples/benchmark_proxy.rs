@@ -15,7 +15,7 @@ async fn main() {
     let port = port.parse::<u16>().expect("PORT must be a valid number");
 
     // Create the proxy and convert it to a router
-    let proxy = ReverseProxy::new(proxy_path, proxy_target);
+    let proxy = ReverseProxy::new(proxy_path, proxy_target, false);
     let app: Router = proxy.into();
 
     // Run the server
