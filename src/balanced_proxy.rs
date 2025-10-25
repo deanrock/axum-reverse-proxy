@@ -7,6 +7,7 @@ use hyper_util::client::legacy::{
     Client,
     connect::{Connect, HttpConnector},
 };
+use rustls::ClientConfig;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -53,7 +54,7 @@ pub type StandardBalancedProxy = BalancedProxy<NativeTlsHttpsConnector<HttpConne
 pub type StandardBalancedProxy = BalancedProxy<HttpConnector>;
 
 impl StandardBalancedProxy {
-    pub fn new<S>(path: S, targets: Vec<S>, preserve_host_header: bool) -> Self
+    pub fn new<S>(path: S, targets: Vec<S>, preserve_host_header: bool, websocket_tls_client_config: ClientConfig) -> Self
     where
         S: Into<String> + Clone,
     {
@@ -84,7 +85,7 @@ impl StandardBalancedProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, targets, preserve_host_header, client)
+        Self::new_with_client(path, targets, preserve_host_header, client, websocket_tls_client_config)
     }
 }
 
@@ -97,6 +98,7 @@ where
         targets: Vec<S>,
         preserve_host_header: bool,
         client: Client<C, Body>,
+        websocket_tls_client_config: ClientConfig,
     ) -> Self
     where
         S: Into<String> + Clone,
@@ -111,6 +113,7 @@ where
                     preserve_host_header,
                     false,
                     client.clone(),
+                    websocket_tls_client_config.clone(),
                 )
             })
             .collect();
@@ -197,6 +200,7 @@ where
     proxy_keys: Arc<tokio::sync::RwLock<HashMap<D::Key, usize>>>, // key -> index mapping
     counter: Arc<AtomicUsize>,
     discover: D,
+    websocket_tls_client_config: ClientConfig,
     strategy: LoadBalancingStrategy,
     // Custom P2C balancer for strategies that need it
     p2c_balancer: Option<Arc<CustomP2cBalancer<C>>>,
@@ -225,6 +229,7 @@ where
         path: S,
         client: Client<C, Body>,
         preserve_host_header: bool,
+        websocket_tls_client_config: ClientConfig,
         discover: D,
     ) -> Self
     where
@@ -235,6 +240,7 @@ where
             client,
             preserve_host_header,
             discover,
+            websocket_tls_client_config,
             LoadBalancingStrategy::default(),
         )
     }
@@ -245,6 +251,7 @@ where
         client: Client<C, Body>,
         preserve_host_header: bool,
         discover: D,
+        websocket_tls_client_config: ClientConfig,
         strategy: LoadBalancingStrategy,
     ) -> Self
     where
@@ -272,6 +279,7 @@ where
             proxy_keys: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             counter: Arc::new(AtomicUsize::new(0)),
             discover: discover.clone(),
+            websocket_tls_client_config,
             strategy,
             p2c_balancer,
         }
@@ -296,6 +304,7 @@ where
         let client = self.client.clone();
         let path = self.path.clone();
         let preserve_host_header = self.preserve_host_header.clone();
+        let websocket_tls_client_config = self.websocket_tls_client_config.clone();
 
         tokio::spawn(async move {
             use futures_util::future::poll_fn;
@@ -318,6 +327,7 @@ where
                                 preserve_host_header,
                                 false,
                                 client.clone(),
+                                websocket_tls_client_config.clone(),
                             );
 
                             {

@@ -1,15 +1,18 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use axum::{body::Body, http::Request, response::Response};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, stream::StreamExt};
 use http::{HeaderMap, HeaderValue, StatusCode};
 use hyper_util::rt::TokioIo;
+use rustls::{ClientConfig, RootCertStore};
 use sha1::{Digest, Sha1};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
+use tokio_tungstenite::Connector;
 use tokio_tungstenite::{
-    connect_async,
+    connect_async_tls_with_config,
     tungstenite::{Error, Message},
 };
 use tracing::{error, trace};
@@ -84,6 +87,7 @@ pub(crate) fn compute_host_header(url: &str) -> (String, u16) {
 /// This function follows the WebSocket protocol specification (RFC 6455) for the upgrade handshake.
 /// It ensures that all required headers are properly handled and forwarded to the upstream server.
 pub(crate) async fn handle_websocket(
+    config: Arc<ClientConfig>,
     req: Request<Body>,
     preserve_host_header: bool,
     is_secure: bool,
@@ -185,7 +189,7 @@ pub(crate) async fn handle_websocket(
     let (parts, body) = req.into_parts();
     let req = Request::from_parts(parts, body);
     tokio::spawn(async move {
-        match handle_websocket_connection(req, request).await {
+        match handle_websocket_connection(config, req, request).await {
             Ok(_) => trace!("WebSocket connection closed gracefully"),
             Err(e) => error!("WebSocket connection error: {}", e),
         }
@@ -215,6 +219,7 @@ pub(crate) async fn handle_websocket(
 ///
 /// When a close frame is received, it is properly forwarded to ensure clean connection termination.
 async fn handle_websocket_connection(
+    config: Arc<ClientConfig>,
     req: Request<Body>,
     upstream_request: tokio_tungstenite::tungstenite::handshake::client::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -233,7 +238,7 @@ async fn handle_websocket_connection(
     .await;
 
     let (upstream_ws, _) =
-        match timeout(Duration::from_secs(5), connect_async(upstream_request)).await {
+        match timeout(Duration::from_secs(5), connect_async_tls_with_config(upstream_request, None, false, Some(Connector::Rustls(config)))).await {
             Ok(Ok(conn)) => conn,
             Ok(Err(e)) => return Err(Box::new(e)),
             Err(e) => return Err(Box::new(e)),
