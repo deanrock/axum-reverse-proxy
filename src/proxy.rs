@@ -9,7 +9,8 @@ use hyper_util::client::legacy::{
     Client,
     connect::{Connect, HttpConnector},
 };
-use std::{convert::Infallible, net::SocketAddr};
+use rustls::ClientConfig;
+use std::{convert::Infallible, net::SocketAddr, sync::Arc};
 use tracing::{error, trace};
 
 use crate::websocket;
@@ -26,6 +27,7 @@ pub struct ReverseProxy<C: Connect + Clone + Send + Sync + 'static> {
     preserve_host_header: bool,
     is_secure: bool,
     client: Client<C, Body>,
+    websocket_tls_client_config: Arc<ClientConfig>,
 }
 
 #[cfg(all(feature = "tls", not(feature = "native-tls")))]
@@ -50,7 +52,7 @@ impl StandardReverseProxy {
     ///
     /// let proxy = ReverseProxy::new("/api", "https://api.example.com");
     /// ```
-    pub fn new<S>(path: S, target: S, preserve_host_header: bool, is_secure: bool) -> Self
+    pub fn new<S>(path: S, target: S, preserve_host_header: bool, is_secure: bool, websocket_tls_client_config: ClientConfig) -> Self
     where
         S: Into<String>,
     {
@@ -81,7 +83,7 @@ impl StandardReverseProxy {
             .set_host(true)
             .build(connector);
 
-        Self::new_with_client(path, target, preserve_host_header, is_secure, client)
+        Self::new_with_client(path, target, preserve_host_header, is_secure, client, websocket_tls_client_config)
     }
 }
 
@@ -121,6 +123,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         preserve_host_header: bool,
         is_secure: bool,
         client: Client<C, Body>,
+        websocket_tls_client_config: ClientConfig,
     ) -> Self
     where
         S: Into<String>,
@@ -131,6 +134,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
             preserve_host_header,
             is_secure,
             client,
+            websocket_tls_client_config: Arc::new(websocket_tls_client_config),
         }
     }
 
@@ -164,6 +168,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> ReverseProxy<C> {
         if websocket::is_websocket_upgrade(req.headers()) {
             trace!("Detected WebSocket upgrade request");
             match websocket::handle_websocket(
+                self.websocket_tls_client_config.clone(),
                 req,
                 self.preserve_host_header,
                 self.is_secure,

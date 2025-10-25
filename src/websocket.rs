@@ -1,17 +1,20 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use axum::{body::Body, http::Request, response::Response};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, stream::StreamExt};
 use http::{HeaderMap, HeaderValue, StatusCode};
 use hyper_util::rt::TokioIo;
+use rustls::{ClientConfig, RootCertStore};
 use sha1::{Digest, Sha1};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, timeout};
-use tokio_tungstenite::tungstenite::error::UrlError;
-use tokio_tungstenite::tungstenite::{Error, Message};
-use tokio_tungstenite::{client_async, tungstenite};
+use tokio_tungstenite::Connector;
+use tokio_tungstenite::{
+    connect_async_tls_with_config,
+    tungstenite::{Error, Message},
+};
 use tracing::{error, trace};
 
 /// Check if a request is a WebSocket upgrade request by examining the headers.
@@ -49,8 +52,6 @@ pub(crate) fn is_websocket_upgrade(headers: &HeaderMap<HeaderValue>) -> bool {
 
 #[cfg(test)]
 pub(crate) fn compute_host_header(url: &str) -> (String, u16) {
-    use url::{Host, Url};
-
     let url = Url::parse(url).unwrap();
     let scheme = url.scheme();
     let host = match url.host().unwrap() {
@@ -86,6 +87,7 @@ pub(crate) fn compute_host_header(url: &str) -> (String, u16) {
 /// This function follows the WebSocket protocol specification (RFC 6455) for the upgrade handshake.
 /// It ensures that all required headers are properly handled and forwarded to the upstream server.
 pub(crate) async fn handle_websocket(
+    config: Arc<ClientConfig>,
     req: Request<Body>,
     preserve_host_header: bool,
     is_secure: bool,
@@ -187,7 +189,7 @@ pub(crate) async fn handle_websocket(
     let (parts, body) = req.into_parts();
     let req = Request::from_parts(parts, body);
     tokio::spawn(async move {
-        match handle_websocket_connection(req, request).await {
+        match handle_websocket_connection(config, req, request).await {
             Ok(_) => trace!("WebSocket connection closed gracefully"),
             Err(e) => error!("WebSocket connection error: {}", e),
         }
@@ -217,6 +219,7 @@ pub(crate) async fn handle_websocket(
 ///
 /// When a close frame is received, it is properly forwarded to ensure clean connection termination.
 async fn handle_websocket_connection(
+    config: Arc<ClientConfig>,
     req: Request<Body>,
     upstream_request: tokio_tungstenite::tungstenite::handshake::client::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -234,34 +237,12 @@ async fn handle_websocket_connection(
     )
     .await;
 
-    let domain = domain(&upstream_request)?;
-    let port = upstream_request
-        .uri()
-        .port_u16()
-        .or_else(|| match upstream_request.uri().scheme_str() {
-            Some("wss") => Some(443),
-            Some("ws") => Some(80),
-            _ => None,
-        })
-        .ok_or(Error::Url(UrlError::UnsupportedUrlScheme))?;
-
-    let addr = format!("{domain}:{port}");
-    let stream = match timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
-        Ok(Ok(stream)) => stream,
-        Ok(Err(e)) => return Err(Box::new(e)),
-        Err(e) => return Err(Box::new(e)),
-    };
-
-    let (upstream_ws, _) = match timeout(
-        Duration::from_secs(5),
-        client_async(upstream_request, stream),
-    )
-    .await
-    {
-        Ok(Ok(conn)) => conn,
-        Ok(Err(e)) => return Err(Box::new(e)),
-        Err(e) => return Err(Box::new(e)),
-    };
+    let (upstream_ws, _) =
+        match timeout(Duration::from_secs(5), connect_async_tls_with_config(upstream_request, None, false, Some(Connector::Rustls(config)))).await {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(e)) => return Err(Box::new(e)),
+            Err(e) => return Err(Box::new(e)),
+        };
 
     let (mut client_sender, mut client_receiver) = client_ws.split();
     let (mut upstream_sender, mut upstream_receiver) = upstream_ws.split();
@@ -348,17 +329,6 @@ async fn handle_websocket_connection(
     }
 
     Ok(())
-}
-
-fn domain(
-    request: &tungstenite::handshake::client::Request,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    match request.uri().host() {
-        // rustls expects IPv6 addresses without the surrounding [] brackets
-        Some(d) if d.starts_with('[') && d.ends_with(']') => Ok(d[1..d.len() - 1].to_string()),
-        Some(d) => Ok(d.to_string()),
-        None => Err(Box::new(tungstenite::error::UrlError::NoHostName)),
-    }
 }
 
 #[cfg(test)]
